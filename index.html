@@ -84,6 +84,17 @@
   #notice{ display:none; background:#fff8e1; border:1px solid #ffe082; color:#6d4c41; border-radius:8px; padding:10px; font-size:13px; margin-bottom:12px; }
   .row{ display:flex; gap:8px; flex-wrap:wrap; }
   footer{ text-align:center; font-size:12px; color:var(--sub); padding:16px; }
+
+  /* ==== 1問ずつモード（ページャ） ==== */
+  .modebar{ display:flex; gap:8px; flex-wrap:wrap; }
+  .modebar button{ font-size:15px; padding:10px 16px; }
+  .modebar button.on{ background:var(--accent); color:#fff; }
+  .pagernav{ display:flex; align-items:stretch; gap:8px; margin-bottom:10px; }
+  .pagernav.bottom{ margin:14px 0 4px; }
+  .pagernav button{ flex:1; font-size:17px; font-weight:700; padding:14px 10px; border-radius:12px; border:1.5px solid var(--accent); background:#fff; color:var(--accent-dark); cursor:pointer; }
+  .pagernav button.next{ background:var(--accent); color:#fff; }
+  .pagernav button:disabled{ opacity:.35; cursor:default; }
+  .pagernav .pos{ flex:0 0 auto; display:flex; align-items:center; font-size:14px; font-weight:700; color:var(--accent-dark); padding:0 4px; white-space:nowrap; }
 </style>
 </head>
 <body>
@@ -111,6 +122,15 @@
     </div>
   </section>
 
+  <section class="panel" id="modePanel">
+    <h2>学習モード</h2>
+    <div class="modebar">
+      <button id="btnModeCard">▶ 1問ずつ</button>
+      <button id="btnModeList" class="on">📋 一覧</button>
+    </div>
+    <p class="small">「1問ずつ」は、1問解いて「次の問題」を押すと画面が切り替わる解き方です。絞り込みやシャッフルと組み合わせて使えます。前回使ったモードは次回もそのまま開きます。</p>
+  </section>
+
   <section class="panel">
     <h2>絞り込み</h2>
     <div class="filters">
@@ -133,6 +153,7 @@
   </section>
 
   <div id="cards"></div>
+  <div id="cardMode" style="display:none"></div>
 
   <section class="panel">
     <h2>学習要素別 理解度</h2>
@@ -170,6 +191,23 @@ if(!store.settings) store.settings = {};
 if(!store.picks || typeof store.picks !== "object" || Array.isArray(store.picks)) store.picks = {};   // 択一の選択状態 {question_id: choiceIndex}
 if(!store.orders || typeof store.orders !== "object" || Array.isArray(store.orders)) store.orders = {};   // 並べ替えの組み立て状態 {question_id: {seq:[元の並びのindex...], checked, ok, incomplete}}
 const qById = new Map(QUESTIONS.map(q => [q.id, q]));
+/* ---------- 1問ずつモード: 状態 ---------- */
+if(!store.settings.mode) store.settings.mode = "list";
+let currentListCache = null; // 直近の絞り込み結果（表示順つき）
+function syncModeButtons(){
+  $("btnModeCard").classList.toggle("on", store.settings.mode === "card");
+  $("btnModeList").classList.toggle("on", store.settings.mode !== "card");
+}
+function afterAttemptK(id){
+  if(store.settings.mode !== "card") return;
+  const list = currentListCache || filteredList();
+  const i = list.findIndex(q => q.id === id);
+  if(i >= 0 && i + 1 < list.length){
+    store.settings.cardPos = i + 1;
+    store.settings.cardQid = list[i + 1].id;
+    saveJSON(STORE_KEY, store);
+  }
+}
 
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
@@ -267,7 +305,7 @@ function shuffledList(list){
 
 /* ---------- cards ---------- */
 function sectionLabel(q){ return q.source_location || q.section_id; }
-function renderCards(){
+function filteredList(){
   const chap = $("fChapter").value, sec = $("fSection").value, typ = $("fType").value, kw = $("fKeyword").value.trim(), starOnly = $("fStar").checked, focus = $("fFocus").value;
   const list = QUESTIONS.filter(q => {
     if(focus && q.focus_type !== focus) return false;
@@ -283,103 +321,148 @@ function renderCards(){
   });
   const displayList = store.settings.shuffle ? shuffledList(list) : list;
   $("shownCount").textContent = list.length + " 問を表示中（全 " + QUESTIONS.length + " 問）" + (focus ? "／出題タイプ：" + (focus === "何条" ? "これは何条？" : focus) : "") + (store.settings.shuffle ? "／シャッフル表示中" : "");
-  const LETTERS = ["A","B","C","D","E","F","G","H"];
-  $("cards").innerHTML = displayList.map(q => {
-    const latest = latestOf(q.id);
-    const wc = wrongCount(q.id);
-    const starred = store.bookmarks.includes(q.id);
-    const isChoice = q.type === "択一" && Array.isArray(q.choices) && q.choices.length > 0;
-    const isOrder = isOrderQ(q);
-    const picked = isChoice && store.picks[q.id] !== undefined && store.picks[q.id] !== null ? Number(store.picks[q.id]) : null;
-    let choices = "";
-    if(isChoice){
-      choices = "<div>" + q.choices.map((c, i) => {
-        const txt = typeof c === "string" ? c : (c.text ?? "");
-        let cls = "choice";
-        if(picked !== null){
-          if(c && c.correct) cls += " ok";
-          else if(i === picked) cls += " ng";
-        }
-        return "<button class='" + cls + "' data-pick='" + esc(q.id) + "' data-idx='" + i + "'>" + LETTERS[i] + "．" + esc(txt) + "</button>";
-      }).join("") + "</div>";
-      if(picked !== null){
-        const pc = q.choices[picked];
-        const ci = q.choices.findIndex(c => c && c.correct);
-        const isOk = !!(pc && pc.correct);
-        choices += "<div class='pickres " + (isOk ? "ok" : "ng") + "'>" + (isOk ? "正解です" : "不正解です（正解は " + (LETTERS[ci] || "") + "）") + " — 選択結果を履歴に記録しました</div>";
-        const notes = q.choices.map((c, i) => (c && !c.correct && c.distractor_note)
-          ? "<div class='dnote'>" + LETTERS[i] + " が誤りである理由：" + esc(c.distractor_note) + "</div>" : "").join("");
-        if(notes) choices += "<div>" + notes + "</div>";
-      }
-    } else if(Array.isArray(q.choices) && q.choices.length){
-      choices = "<ol class='choices'>" + q.choices.map(c => "<li>" + esc(typeof c === "string" ? c : (c.text ?? JSON.stringify(c))) + "</li>").join("") + "</ol>";
-    }
-    if(isOrder){
-      const ost = orderState(q.id);
-      const seq = ost.seq.filter(oi => Number.isInteger(oi) && oi >= 0 && oi < q.order_items.length);
-      const seqChips = seq.length
-        ? seq.map((oi, pos) => "<span class='orderchip'>" + (pos + 1) + ". " + esc(q.order_items[oi]) + "</span>").join("<span class='arrow'>→</span>")
-        : "<span class='placeholder'>下の選択肢を順番にタップして、正しい順序に並べてください</span>";
-      const poolChips = orderShuffleIdx(q).map(oi => {
-        const used = seq.includes(oi);
-        return "<button class='orderchip" + (used ? " used" : "") + "' data-opick='" + esc(q.id) + "' data-oidx='" + oi + "'" + (used ? " disabled" : "") + ">" + esc(q.order_items[oi]) + "</button>";
-      }).join("");
-      let resHtml = "";
-      if(ost.checked){
-        resHtml = ost.ok
-          ? "<div class='orderres ok'>正解です ― 模範の順序と一致しました</div>"
-          : "<div class='orderres ng'>不正解です<span class='model'>模範の順序：" + esc(q.order_items.join(" → ")) + "</span></div>";
-      } else if(ost.incomplete){
-        resHtml = "<div class='orderres'>全部の選択肢を並べてから「答え合わせ」を押してください</div>";
-      }
-      choices = "<div class='orderseq'>" + seqChips + "</div>"
-        + "<div class='orderpool'>" + poolChips + "</div>"
-        + "<div class='orderbtns'><button data-oundo='" + esc(q.id) + "'>1つ戻す</button>"
-        + "<button data-oreset='" + esc(q.id) + "'>リセット</button>"
-        + "<button class='primary' data-ocheck='" + esc(q.id) + "'>答え合わせ</button></div>"
-        + resHtml;
-    }
-    const ex = q.explanation || {};
-    const expHtml = [
-      ex.reason ? "<dt>理由</dt><dd>" + esc(ex.reason) + "</dd>" : "",
-      ex.basis ? "<dt>根拠</dt><dd>" + esc(ex.basis) + "</dd>" : "",
-      ex.caution ? "<dt>注意</dt><dd>" + esc(ex.caution) + "</dd>" : ""
-    ].join("");
-    const kwHtml = Array.isArray(q.keywords) && q.keywords.length
-      ? "<h4 class='subhead'>キーワード</h4><div class='kw'>" + q.keywords.map(k => "<span>" + esc(k) + "</span>").join("") + "</div>" : "";
-    const scpHtml = Array.isArray(q.self_check_points) && q.self_check_points.length
-      ? "<h4 class='subhead'>自己採点の観点</h4><ul class='scp'>" + q.self_check_points.map(p => "<li>" + esc(p) + "</li>").join("") + "</ul>" : "";
-    const essayNote = q.type === "記述"
-      ? "<p class='small'>自動採点は行いません。模範解答・キーワード・自己採点の観点と見比べて、○△×で自己採点してください。</p>" : "";
-    const judgeCls = r => latest && latest.result === r ? (r==="○" ? " sel-o" : r==="△" ? " sel-t" : " sel-x") : "";
-    const judgeHtml = isChoice
-      ? "<div class='judge'><span class='hint'>選択肢を選ぶと自動で判定し、履歴に記録します。</span></div>"
-      : "<div class='judge'><span class='hint'>" + (q.type === "記述" ? "自己採点：" : "自己判定：") + "</span>"
-        + ["○","△","×"].map(r => "<button data-judge='" + esc(q.id) + "' data-result='" + r + "' class='" + judgeCls(r).trim() + "'>" + r + "</button>").join("")
-        + "</div>";
-    const ansOpen = picked !== null;
-    return "<article class='card' data-qid='" + esc(q.id) + "'>"
-      + "<div class='badges'><span class='badge'>" + esc(q.type) + "</span>"
-      + "<span class='badge imp'>重要度 " + esc(q.importance) + "</span>"
-      + "<span class='badge page'>出典 p." + esc(q.source_page) + "（" + esc(sectionLabel(q)) + "）</span>"
-      + (wc ? "<span class='badge wrong'>× " + wc + " 回</span>" : "")
-      + "<button class='star" + (starred ? "" : " off") + "' data-star='" + esc(q.id) + "' aria-label='ブックマーク'>★</button></div>"
-      + "<div class='q'>" + esc(q.question) + "</div>" + choices
-      + "<div style='margin-top:10px'><button data-toggle='" + esc(q.id) + "'>" + (ansOpen ? "解答・解説を隠す" : "解答・解説を表示") + "</button></div>"
-      + "<div class='ans" + (ansOpen ? " open" : "") + "' id='ans-" + esc(q.id) + "'><div class='a'>" + esc(q.answer) + "</div>"
-      + (expHtml ? "<dl class='exp'>" + expHtml + "</dl>" : "")
-      + kwHtml + scpHtml + essayNote
-      + (q.source_quote ? "<div class='quote'>原文： " + esc(q.source_quote) + "</div>" : "")
-      + judgeHtml
-      + "</div></article>";
-  }).join("");
+  return displayList;
 }
+const LETTERS = ["A","B","C","D","E","F","G","H"];
+function buildCard(q){
+  let html;
+  const latest = latestOf(q.id);
+  const wc = wrongCount(q.id);
+  const starred = store.bookmarks.includes(q.id);
+  const isChoice = q.type === "択一" && Array.isArray(q.choices) && q.choices.length > 0;
+  const isOrder = isOrderQ(q);
+  const picked = isChoice && store.picks[q.id] !== undefined && store.picks[q.id] !== null ? Number(store.picks[q.id]) : null;
+  let choices = "";
+  if(isChoice){
+    choices = "<div>" + q.choices.map((c, i) => {
+      const txt = typeof c === "string" ? c : (c.text ?? "");
+      let cls = "choice";
+      if(picked !== null){
+        if(c && c.correct) cls += " ok";
+        else if(i === picked) cls += " ng";
+      }
+      return "<button class='" + cls + "' data-pick='" + esc(q.id) + "' data-idx='" + i + "'>" + LETTERS[i] + "．" + esc(txt) + "</button>";
+    }).join("") + "</div>";
+    if(picked !== null){
+      const pc = q.choices[picked];
+      const ci = q.choices.findIndex(c => c && c.correct);
+      const isOk = !!(pc && pc.correct);
+      choices += "<div class='pickres " + (isOk ? "ok" : "ng") + "'>" + (isOk ? "正解です" : "不正解です（正解は " + (LETTERS[ci] || "") + "）") + " — 選択結果を履歴に記録しました</div>";
+      const notes = q.choices.map((c, i) => (c && !c.correct && c.distractor_note)
+        ? "<div class='dnote'>" + LETTERS[i] + " が誤りである理由：" + esc(c.distractor_note) + "</div>" : "").join("");
+      if(notes) choices += "<div>" + notes + "</div>";
+    }
+  } else if(Array.isArray(q.choices) && q.choices.length){
+    choices = "<ol class='choices'>" + q.choices.map(c => "<li>" + esc(typeof c === "string" ? c : (c.text ?? JSON.stringify(c))) + "</li>").join("") + "</ol>";
+  }
+  if(isOrder){
+    const ost = orderState(q.id);
+    const seq = ost.seq.filter(oi => Number.isInteger(oi) && oi >= 0 && oi < q.order_items.length);
+    const seqChips = seq.length
+      ? seq.map((oi, pos) => "<span class='orderchip'>" + (pos + 1) + ". " + esc(q.order_items[oi]) + "</span>").join("<span class='arrow'>→</span>")
+      : "<span class='placeholder'>下の選択肢を順番にタップして、正しい順序に並べてください</span>";
+    const poolChips = orderShuffleIdx(q).map(oi => {
+      const used = seq.includes(oi);
+      return "<button class='orderchip" + (used ? " used" : "") + "' data-opick='" + esc(q.id) + "' data-oidx='" + oi + "'" + (used ? " disabled" : "") + ">" + esc(q.order_items[oi]) + "</button>";
+    }).join("");
+    let resHtml = "";
+    if(ost.checked){
+      resHtml = ost.ok
+        ? "<div class='orderres ok'>正解です ― 模範の順序と一致しました</div>"
+        : "<div class='orderres ng'>不正解です<span class='model'>模範の順序：" + esc(q.order_items.join(" → ")) + "</span></div>";
+    } else if(ost.incomplete){
+      resHtml = "<div class='orderres'>全部の選択肢を並べてから「答え合わせ」を押してください</div>";
+    }
+    choices = "<div class='orderseq'>" + seqChips + "</div>"
+      + "<div class='orderpool'>" + poolChips + "</div>"
+      + "<div class='orderbtns'><button data-oundo='" + esc(q.id) + "'>1つ戻す</button>"
+      + "<button data-oreset='" + esc(q.id) + "'>リセット</button>"
+      + "<button class='primary' data-ocheck='" + esc(q.id) + "'>答え合わせ</button></div>"
+      + resHtml;
+  }
+  const ex = q.explanation || {};
+  const expHtml = [
+    ex.reason ? "<dt>理由</dt><dd>" + esc(ex.reason) + "</dd>" : "",
+    ex.basis ? "<dt>根拠</dt><dd>" + esc(ex.basis) + "</dd>" : "",
+    ex.caution ? "<dt>注意</dt><dd>" + esc(ex.caution) + "</dd>" : ""
+  ].join("");
+  const kwHtml = Array.isArray(q.keywords) && q.keywords.length
+    ? "<h4 class='subhead'>キーワード</h4><div class='kw'>" + q.keywords.map(k => "<span>" + esc(k) + "</span>").join("") + "</div>" : "";
+  const scpHtml = Array.isArray(q.self_check_points) && q.self_check_points.length
+    ? "<h4 class='subhead'>自己採点の観点</h4><ul class='scp'>" + q.self_check_points.map(p => "<li>" + esc(p) + "</li>").join("") + "</ul>" : "";
+  const essayNote = q.type === "記述"
+    ? "<p class='small'>自動採点は行いません。模範解答・キーワード・自己採点の観点と見比べて、○△×で自己採点してください。</p>" : "";
+  const judgeCls = r => latest && latest.result === r ? (r==="○" ? " sel-o" : r==="△" ? " sel-t" : " sel-x") : "";
+  const judgeHtml = isChoice
+    ? "<div class='judge'><span class='hint'>選択肢を選ぶと自動で判定し、履歴に記録します。</span></div>"
+    : "<div class='judge'><span class='hint'>" + (q.type === "記述" ? "自己採点：" : "自己判定：") + "</span>"
+      + ["○","△","×"].map(r => "<button data-judge='" + esc(q.id) + "' data-result='" + r + "' class='" + judgeCls(r).trim() + "'>" + r + "</button>").join("")
+      + "</div>";
+  const ansOpen = picked !== null;
+  html = "<article class='card' data-qid='" + esc(q.id) + "'>"
+    + "<div class='badges'><span class='badge'>" + esc(q.type) + "</span>"
+    + "<span class='badge imp'>重要度 " + esc(q.importance) + "</span>"
+    + "<span class='badge page'>出典 p." + esc(q.source_page) + "（" + esc(sectionLabel(q)) + "）</span>"
+    + (wc ? "<span class='badge wrong'>× " + wc + " 回</span>" : "")
+    + "<button class='star" + (starred ? "" : " off") + "' data-star='" + esc(q.id) + "' aria-label='ブックマーク'>★</button></div>"
+    + "<div class='q'>" + esc(q.question) + "</div>" + choices
+    + "<div style='margin-top:10px'><button data-toggle='" + esc(q.id) + "'>" + (ansOpen ? "解答・解説を隠す" : "解答・解説を表示") + "</button></div>"
+    + "<div class='ans" + (ansOpen ? " open" : "") + "' id='ans-" + esc(q.id) + "'><div class='a'>" + esc(q.answer) + "</div>"
+    + (expHtml ? "<dl class='exp'>" + expHtml + "</dl>" : "")
+    + kwHtml + scpHtml + essayNote
+    + (q.source_quote ? "<div class='quote'>原文： " + esc(q.source_quote) + "</div>" : "")
+    + judgeHtml
+    + "</div></article>";
+  return html;
+}
+function renderCards(){
+  const list = filteredList();
+  const prevCache = currentListCache;
+  currentListCache = list;
+  if(store.settings.mode === "card"){
+    $("cards").style.display = "none";
+    $("cards").innerHTML = "";
+    const cm = $("cardMode"); cm.style.display = "";
+    if(!list.length){ cm.innerHTML = "<div class='card'>条件に合う問題がありません。</div>"; return; }
+    const sameList = prevCache && prevCache.length === list.length && prevCache.every((q, i) => q.id === list[i].id);
+    let pos = sameList ? (store.settings.cardPos || 0) : 0;
+    if(pos >= list.length) pos = 0;
+    if(sameList && store.settings.cardQid){ const i = list.findIndex(q => q.id === store.settings.cardQid); if(i >= 0) pos = i; }
+    store.settings.cardPos = pos;
+    store.settings.cardQid = list[pos].id;
+    saveJSON(STORE_KEY, store);
+    const q = list[pos];
+    const total = list.length;
+    const navHtml = (cls) => "<div class='pagernav " + cls + "'><button data-cardnav='prev'" + (pos <= 0 ? " disabled" : "") + ">← 前の問題</button><span class='pos'>" + (pos+1) + " / " + total + " 問</span><button class='next' data-cardnav='next'" + (pos >= total-1 ? " disabled" : "") + ">次の問題 →</button></div>";
+    cm.innerHTML = navHtml("top") + "<p class='small'>1問ずつモード：解答を開いて ○△× を付けると自動で次へ進みます。「次の問題」でも移動できます。</p>" + buildCard(q) + navHtml("bottom");
+    return;
+  }
+  $("cardMode").style.display = "none";
+  $("cardMode").innerHTML = "";
+  $("cards").style.display = "";
+  $("cards").innerHTML = list.map(q => buildCard(q)).join("");
+}
+
 document.addEventListener("click", e => {
   const t = e.target;
   if(t.dataset.toggle){
-    const el = $("ans-" + t.dataset.toggle);
-    const open = el.classList.toggle("open");
-    t.textContent = open ? "解答・解説を隠す" : "解答・解説を表示";
+    const card = t.closest(".card");
+    const el = card ? card.querySelector(".ans") : $("ans-" + t.dataset.toggle);
+    if(el){
+      const open = el.classList.toggle("open");
+      t.textContent = open ? "解答・解説を隠す" : "解答・解説を表示";
+    }
+  }
+  if(t.dataset.cardnav){
+    const list = currentListCache || filteredList();
+    if(list.length){
+      let pos = store.settings.cardPos || 0;
+      pos = t.dataset.cardnav === "next" ? Math.min(pos + 1, list.length - 1) : Math.max(pos - 1, 0);
+      store.settings.cardPos = pos;
+      store.settings.cardQid = list[pos].id;
+      saveJSON(STORE_KEY, store);
+    }
+    renderCards(); return;
   }
   if(t.dataset.star){
     const id = t.dataset.star;
@@ -406,6 +489,7 @@ document.addEventListener("click", e => {
     const first = attemptsOf(id).length === 0;
     history.push({question_id:id, ts:new Date().toISOString(), result:t.dataset.result, first:first});
     saveJSON(HISTORY_KEY, history);
+    afterAttemptK(id);
     renderCards(); renderStats();
   }
   if(t.dataset.opick){
@@ -541,6 +625,9 @@ function buildSectionOptions(){
     saveJSON(STORE_KEY, store);
     renderCards();
   });
+  $("btnModeCard").addEventListener("click", () => { store.settings.mode = "card"; saveJSON(STORE_KEY, store); syncModeButtons(); renderCards(); });
+  $("btnModeList").addEventListener("click", () => { store.settings.mode = "list"; saveJSON(STORE_KEY, store); syncModeButtons(); renderCards(); });
+  syncModeButtons();
   renderCards(); renderStats();
 })();
 </script>
