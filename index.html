@@ -46,6 +46,10 @@
   #btnO { color: #2e7d32; border-color: #2e7d32; }
   #btnT { color: #b45309; border-color: #f9a825; }
   #btnX { color: #c62828; border-color: #c62828; }
+  #btnNext { width: 100%; margin-top: 10px; padding: 12px; font-size: 14px; background: #fef3c7;
+             color: #92400e; border: 1px solid #f59e0b; border-radius: 10px; cursor: pointer; }
+  #btnHide { width: 100%; margin-top: 10px; padding: 11px; font-size: 13px; background: #ffffff;
+             color: #78716c; border: 1px solid #d6d3d1; border-radius: 10px; cursor: pointer; }
   #endBox { text-align: center; padding: 30px 10px; }
   #btnRestart { padding: 12px 26px; font-size: 15px; font-weight: bold; background: #f59e0b;
                 color: #ffffff; border: none; border-radius: 10px; cursor: pointer; }
@@ -120,6 +124,8 @@
       <button class="grade-btn" id="btnT">△</button>
       <button class="grade-btn" id="btnX">×</button>
     </div>
+    <button id="btnHide" style="display:none">答えを閉じる</button>
+    <button id="btnNext">次へ</button>
   </div>
   <div class="card" id="endBox" style="display:none">
     <p>最後まで終わりました。</p>
@@ -231,7 +237,9 @@ function render() {
   }
   $("answerBox").style.display = "none";
   $("gradeRow").style.display = "none";
+  $("btnHide").style.display = "none";
   $("btnShow").style.display = "";
+  $("btnNext").style.display = "";
 }
 
 function sourceLine(item) {
@@ -292,7 +300,16 @@ function showAnswer() {
   $("answerContent").innerHTML = html;
   $("answerBox").style.display = "";
   $("gradeRow").style.display = "";
+  $("btnHide").style.display = "";
   $("btnShow").style.display = "none";
+}
+
+function hideAnswer() {
+  if (!currentItem()) return;
+  $("answerBox").style.display = "none";
+  $("gradeRow").style.display = "none";
+  $("btnHide").style.display = "none";
+  $("btnShow").style.display = "";
 }
 
 function grade(g) {
@@ -300,6 +317,13 @@ function grade(g) {
   if (!item) return;
   stores[mode][item.id] = g;
   saveGrades(KEYS[mode], stores[mode]);
+  s.idx++;
+  render();
+}
+
+function next() {
+  var s = state[state.mode];
+  if (!currentItem()) return;
   s.idx++;
   render();
 }
@@ -347,6 +371,8 @@ function init() {
   $("btnO").addEventListener("click", function () { grade("○"); });
   $("btnT").addEventListener("click", function () { grade("△"); });
   $("btnX").addEventListener("click", function () { grade("×"); });
+  $("btnNext").addEventListener("click", next);
+  $("btnHide").addEventListener("click", hideAnswer);
   $("btnRestart").addEventListener("click", function () { buildQueue(state.mode); render(); });
   render();
 }
@@ -355,7 +381,8 @@ var APP = { state: state, QUESTIONS: QUESTIONS, CARDS: CARDS, ARTICLES: ARTICLES
             COMPARES: COMPARES, CASES: CASES, stores: stores, KEYS: KEYS,
             qGrades: stores.q, rGrades: stores.r, aGrades: stores.a,
             cGrades: stores.c, sGrades: stores.s,
-            buildQueue: buildQueue, render: render, showAnswer: showAnswer, grade: grade };
+            buildQueue: buildQueue, render: render, showAnswer: showAnswer, hideAnswer: hideAnswer,
+            grade: grade, next: next };
 init();
 </script>
 </body>
