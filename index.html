@@ -385,5 +385,12 @@ var APP = { state: state, QUESTIONS: QUESTIONS, CARDS: CARDS, ARTICLES: ARTICLES
             grade: grade, next: next };
 init();
 </script>
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function () {
+    navigator.serviceWorker.register('sw.js').catch(function () {});
+  });
+}
+</script>
 </body>
 </html>
