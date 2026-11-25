@@ -20,6 +20,7 @@
   .seg-btn { padding: 7px 12px; font-size: 13px; border: 1px solid #d6d3d1; border-radius: 16px;
              background: #ffffff; color: #57534e; cursor: pointer; }
   .seg-btn.active { background: #b45309; border-color: #b45309; color: #ffffff; font-weight: bold; }
+  .rand10-btn { margin-top: 8px; padding: 7px 14px; font-size: 13px; font-weight: bold; border: 1px solid #b45309; border-radius: 16px; background: #ffffff; color: #b45309; cursor: pointer; }
   select { width: 100%; padding: 9px; font-size: 14px; border: 1px solid #d6d3d1; border-radius: 8px;
            background: #ffffff; color: #292524; margin-bottom: 8px; }
   main { padding: 14px; max-width: 720px; margin: 0 auto; }
@@ -89,6 +90,7 @@
     <button class="seg-btn qOrderBtn active" data-order="seq">章を選んで順番</button>
     <button class="seg-btn qOrderBtn" data-order="rand">ランダム</button>
   </div>
+  <button class="rand10-btn" id="btn10q">ランダム10問</button>
 </div>
 
 <div class="controls" id="rControls" style="display:none">
@@ -97,6 +99,7 @@
     <button class="seg-btn rOrderBtn active" data-order="seq">章を選んで順番</button>
     <button class="seg-btn rOrderBtn" data-order="rand">ランダム</button>
   </div>
+  <button class="rand10-btn" id="btn10r">ランダム10問</button>
 </div>
 
 <div class="controls" id="aControls" style="display:none">
@@ -105,6 +108,7 @@
     <button class="seg-btn aOrderBtn active" data-order="seq">順番</button>
     <button class="seg-btn aOrderBtn" data-order="rand">ランダム</button>
   </div>
+  <button class="rand10-btn" id="btn10a">ランダム10問</button>
 </div>
 
 <div class="controls" id="cControls" style="display:none">
@@ -113,6 +117,7 @@
     <button class="seg-btn cOrderBtn active" data-order="seq">章を選んで順番</button>
     <button class="seg-btn cOrderBtn" data-order="rand">ランダム</button>
   </div>
+  <button class="rand10-btn" id="btn10c">ランダム10問</button>
 </div>
 
 <div class="controls" id="sControls" style="display:none">
@@ -121,6 +126,7 @@
     <button class="seg-btn sOrderBtn active" data-order="seq">章を選んで順番</button>
     <button class="seg-btn sOrderBtn" data-order="rand">ランダム</button>
   </div>
+  <button class="rand10-btn" id="btn10s">ランダム10問</button>
 </div>
 
 <div class="controls" id="xallControls" style="display:none">
@@ -128,6 +134,7 @@
     <button class="seg-btn xallOrderBtn active" data-order="seq">順番</button>
     <button class="seg-btn xallOrderBtn" data-order="rand">ランダム</button>
   </div>
+  <button class="rand10-btn" id="btn10x">ランダム10問</button>
 </div>
 
 <div class="controls" id="r2Controls" style="display:none">
@@ -137,6 +144,7 @@
     <button class="seg-btn r2OrderBtn active" data-order="seq">順番</button>
     <button class="seg-btn r2OrderBtn" data-order="rand">ランダム</button>
   </div>
+  <button class="rand10-btn" id="btn10r2">ランダム10問</button>
 </div>
 
 <main>
@@ -223,6 +231,31 @@ function buildQueue(mode) {
   var items = SRC[mode].filter(function (it) { return matchItem(mode, s, it); });
   s.queue = (s.order === "rand") ? shuffle(items) : items;
   s.idx = 0;
+  s.s10 = false;
+}
+
+// ===== ランダム10問セッション（v7） =====
+// start10: そのモードの現在の絞り込みプールから重複なしランダム10問
+// （プールが10未満なら全件）のキューを作る。記録は通常どおり従来キー。
+// セッション解除は buildQueue 系が s10=false に戻すことで行い、
+// タブ切替では cancel10Main、レイヤー切替では cancel10All が通常キューへ戻す。
+function start10(mode) {
+  var s = state[mode];
+  var pool = SRC[mode].filter(function (it) { return matchItem(mode, s, it); });
+  s.queue = shuffle(pool).slice(0, 10);
+  s.idx = 0;
+  s.s10 = true;
+  render();
+}
+
+function cancel10Main() {
+  MODES.forEach(function (m) { if (state[m].s10) buildQueue(m); });
+}
+
+function cancel10All() {
+  cancel10Main();
+  if (xstate.s10) xbuildQueue();
+  if (rstate.s10) rbuildQueue();
 }
 
 function currentItem() {
@@ -422,11 +455,12 @@ function segWire(cls, cb) {
 function init() {
   MODES.forEach(function (m) {
     fillChapterSelect($(m + "Chapter"), chaptersOf(m));
-    $("tab" + m.toUpperCase()).addEventListener("click", function () { state.mode = m; render(); });
+    $("tab" + m.toUpperCase()).addEventListener("click", function () { cancel10Main(); state.mode = m; render(); });
     $(m + "Chapter").addEventListener("change", function () {
       state[m].ch = $(m + "Chapter").value; buildQueue(m); render();
     });
     segWire(m + "OrderBtn", function (v) { state[m].order = v; buildQueue(m); render(); });
+    $("btn10" + m).addEventListener("click", function () { start10(m); });
     buildQueue(m);
   });
   segWire("typeBtn", function (v) { state.q.type = v; buildQueue("q"); render(); });
@@ -503,6 +537,14 @@ function xbuildQueue() {
   });
   xstate.queue = (xstate.order === "rand") ? shuffle(entries) : entries;
   xstate.idx = 0;
+  xstate.s10 = false;
+}
+
+function xstart10() {
+  xstate.queue = shuffle(XALL.slice()).slice(0, 10);
+  xstate.idx = 0;
+  xstate.s10 = true;
+  render();
 }
 
 function xcurrentEntry() {
@@ -631,8 +673,9 @@ function xshowAnswer() {
 
 function initExam() {
   segWire("xallOrderBtn", function (v) { xstate.order = v; xbuildQueue(); render(); });
-  $("layerMain").addEventListener("click", function () { state.layer = "main"; render(); });
-  $("layerExam").addEventListener("click", function () { state.layer = "exam"; render(); });
+  $("btn10x").addEventListener("click", function () { xstart10(); });
+  $("layerMain").addEventListener("click", function () { cancel10All(); state.layer = "main"; render(); });
+  $("layerExam").addEventListener("click", function () { cancel10All(); state.layer = "exam"; render(); });
   xbuildQueue();
 }
 
@@ -650,6 +693,18 @@ function rbuildQueue() {
   });
   rstate.queue = (rstate.order === "rand") ? shuffle(items) : items;
   rstate.idx = 0;
+  rstate.s10 = false;
+}
+
+function rstart10() {
+  var items = RDATA.filter(function (it) {
+    return (rstate.ch === "all" || it.chapter === rstate.ch) &&
+           (rstate.imp === "all" || it.importance === rstate.imp);
+  });
+  rstate.queue = shuffle(items).slice(0, 10);
+  rstate.idx = 0;
+  rstate.s10 = true;
+  render();
 }
 
 function rcurrentItem() {
@@ -746,7 +801,8 @@ function initRonten() {
     rstate.imp = $("r2Imp").value; rbuildQueue(); render();
   });
   segWire("r2OrderBtn", function (v) { rstate.order = v; rbuildQueue(); render(); });
-  $("layerRonten").addEventListener("click", function () { state.layer = "ronten"; render(); });
+  $("btn10r2").addEventListener("click", function () { rstart10(); });
+  $("layerRonten").addEventListener("click", function () { cancel10All(); state.layer = "ronten"; render(); });
   rbuildQueue();
 }
 
@@ -754,16 +810,16 @@ var APP = { state: state, QUESTIONS: QUESTIONS, CARDS: CARDS, ARTICLES: ARTICLES
             COMPARES: COMPARES, CASES: CASES, stores: stores, KEYS: KEYS,
             qGrades: stores.q, rGrades: stores.r, aGrades: stores.a,
             cGrades: stores.c, sGrades: stores.s,
-            buildQueue: buildQueue, render: render, showAnswer: showAnswer, hideAnswer: hideAnswer,
+            buildQueue: buildQueue, start10: start10, cancel10All: cancel10All, render: render, showAnswer: showAnswer, hideAnswer: hideAnswer,
             grade: grade, next: next,
             XCASES: XCASES, XQUESTIONS: XQUESTIONS, XCARDS: XCARDS,
             XARTICLES: XARTICLES, XCOMPARES: XCOMPARES,
             xstate: xstate, xstores: xstores, XKEYS: XKEYS,
             xstore: xstore, XALLKEY: XALLKEY, XALL: XALL, XLABELS: XLABELS,
-            xbuildQueue: xbuildQueue, xrender: xrender, xshowAnswer: xshowAnswer,
+            xbuildQueue: xbuildQueue, xstart10: xstart10, xrender: xrender, xshowAnswer: xshowAnswer,
             xcurrentItem: xcurrentItem, xcurrentMode: xcurrentMode,
             RDATA: RDATA, rstate: rstate, rstore: rstore, RKEY: RKEY,
-            rbuildQueue: rbuildQueue, rrender: rrender, rshowAnswer: rshowAnswer };
+            rbuildQueue: rbuildQueue, rstart10: rstart10, rrender: rrender, rshowAnswer: rshowAnswer };
 init();
 initExam();
 initRonten();
