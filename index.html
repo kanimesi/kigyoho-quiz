@@ -21,6 +21,7 @@
              background: #ffffff; color: #57534e; cursor: pointer; }
   .seg-btn.active { background: #b45309; border-color: #b45309; color: #ffffff; font-weight: bold; }
   .rand10-btn { margin-top: 8px; padding: 7px 14px; font-size: 13px; font-weight: bold; border: 1px solid #b45309; border-radius: 16px; background: #ffffff; color: #b45309; cursor: pointer; }
+  .filter-head .rand10-btn { margin-top: 0; margin-left: auto; }
   select { width: 100%; padding: 9px; font-size: 14px; border: 1px solid #d6d3d1; border-radius: 8px;
            background: #ffffff; color: #292524; margin-bottom: 8px; }
   main { padding: 14px; max-width: 720px; margin: 0 auto; }
@@ -159,6 +160,7 @@ header h1{font-family:"Noto Serif JP",serif;}
 <div class="panel filter-head" id="filterHead">
   <button class="filter-toggle" id="filterToggle" type="button" aria-expanded="false" aria-controls="filterPanel">🔍 絞り込み</button>
   <div class="filter-summary" id="filterSummary"></div>
+  <button class="rand10-btn" id="btn10outer" type="button">ランダム10問</button>
 </div>
 
 <div class="panel" id="filterPanel" hidden>
@@ -1329,6 +1331,13 @@ $("filterToggle").addEventListener("click", function () {
   var p = $("filterPanel");
   p.hidden = !p.hidden;
   $("filterToggle").setAttribute("aria-expanded", p.hidden ? "false" : "true");
+});
+// ランダム10問（外側ボタン）: 絞り込みパネルを開かずに、現在表示中の
+// レイヤー・モードのランダム10問を始める。プールは現在の絞り込み状態を使う。
+$("btn10outer").addEventListener("click", function () {
+  if (state.layer === "exam") { xstart10(); return; }
+  if (state.layer === "ronten") { rstart10(); return; }
+  start10(state.mode);
 });
 $("searchBox").addEventListener("input", uSearch);
 $("searchResults").addEventListener("click", function (e) {
