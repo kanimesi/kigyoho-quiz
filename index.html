@@ -131,6 +131,34 @@
 header h1{font-family:"Noto Serif JP",serif;}
 .body-text{font-family:"Noto Serif JP",serif;font-weight:500;}
 </style>
+
+<style>
+/* ===== CPA式追加機能（ブックマーク/メモ/除外/直近3回/解答後演出）: 追加のみ・常時ダーク・黄色系 ===== */
+#cardBox { position: relative; }
+#cpaCardTools { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 10px 0 2px; }
+.cpa-tool-btn { padding: 7px 12px; font-size: 12.5px; background: #2c2822; color: #fcd34d; border: 1px solid #d97706; border-radius: 9px; cursor: pointer; }
+.cpa-tool-btn.cpa-on { background: #92400e; color: #ffffff; border-color: #f59e0b; font-weight: bold; }
+#cpaHistory { font-size: 12.5px; color: #a8a29e; letter-spacing: 0.12em; }
+#cpaMemoView { margin-top: 8px; padding: 9px 11px; font-size: 13px; line-height: 1.6; color: #f3efe7; background: #2c2822; border: 1px solid #66531a; border-radius: 9px; white-space: pre-wrap; word-break: break-word; }
+.cpa-badge { position: absolute; top: 36%; left: 50%; transform: translate(-50%, -50%) rotate(-8deg); font-size: 46px; font-weight: 900; letter-spacing: 0.08em; padding: 10px 30px; border-radius: 14px; pointer-events: none; z-index: 6; background: rgba(20, 18, 14, .9); }
+.cpa-badge.cpa-correct { color: #4ade80; border: 4px solid #4ade80; }
+.cpa-badge.cpa-wrong { color: #f87171; border: 4px solid #f87171; }
+.cpa-badge.cpa-partial { color: #fbbf24; border: 4px solid #fbbf24; }
+#cardBox.cpa-correct { box-shadow: inset 0 0 0 3px #22c55e; background: #1e2b20; }
+#cardBox.cpa-wrong { box-shadow: inset 0 0 0 3px #ef4444; background: #2e2020; }
+#cardBox.cpa-partial { box-shadow: inset 0 0 0 3px #f59e0b; background: #2c2822; }
+#cpaFilterControls { display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; }
+#cpaFilterControls label { font-size: 13.5px; color: #f3efe7; cursor: pointer; }
+#cpaFilterControls input[type="checkbox"] { accent-color: #d97706; width: 17px; height: 17px; vertical-align: -3px; }
+#cpaMemoModal { position: fixed; inset: 0; background: rgba(0,0,0,.72); z-index: 60; display: flex; align-items: center; justify-content: center; padding: 18px; }
+.cpa-modal-panel { width: 100%; max-width: 520px; background: #26231f; border: 1px solid #d97706; border-radius: 14px; padding: 16px; }
+.cpa-modal-title { font-size: 14px; font-weight: bold; color: #fcd34d; margin-bottom: 10px; }
+#cpaMemoText { width: 100%; min-height: 130px; padding: 10px 12px; font-size: 14px; line-height: 1.6; background: #211e1a; color: #f3efe7; border: 1px solid #57534e; border-radius: 9px; box-sizing: border-box; }
+.cpa-modal-row { display: flex; gap: 8px; margin-top: 12px; }
+.cpa-modal-row button { flex: 1; padding: 11px 8px; font-size: 13.5px; font-weight: bold; border-radius: 10px; cursor: pointer; }
+#cpaMemoSave { background: #d97706; color: #1c1917; border: none; }
+#cpaMemoClose { background: #2c2822; color: #fcd34d; border: 1px solid #d97706; }
+</style>
 </head>
 <body>
 <div class="wrap">
@@ -212,6 +240,10 @@ header h1{font-family:"Noto Serif JP",serif;}
   </div>
   <button class="rand10-btn" id="btn10r2">ランダム10問</button>
 </div>
+<div class="controls" id="cpaFilterControls">
+  <label><input type="checkbox" id="cpaBookmarkOnly"> ブックマークのみ</label>
+  <label><input type="checkbox" id="cpaIncludeExcluded"> 除外を含める</label>
+</div>
   <div class="search-block">
     <div class="field-label">キーワード検索（問題文・解答が対象）</div>
     <input type="search" id="searchBox" placeholder="キーワード検索（例：取締役会、募集株式、利益供与）" autocomplete="off">
@@ -232,6 +264,14 @@ header h1{font-family:"Noto Serif JP",serif;}
     <div class="card-chapter" id="cardChapter"></div>
     <div class="meta" id="cardMeta"></div>
     <div class="counter" id="counter"></div>
+    <div id="cpaCardTools" style="display:none">
+      <button type="button" class="cpa-tool-btn" id="cpaBookmarkBtn">☆ ブックマーク</button>
+      <button type="button" class="cpa-tool-btn" id="cpaMemoBtn">メモ</button>
+      <button type="button" class="cpa-tool-btn" id="cpaExcludeBtn">出題から除外</button>
+      <span id="cpaHistory">直近3回: — — —</span>
+    </div>
+    <div id="cpaMemoView" style="display:none"></div>
+    <div id="cpaBadge" class="cpa-badge" style="display:none"></div>
     <div class="body-text" id="cardBody"></div>
     <button id="btnShow">答えを見る</button>
     <div id="answerBox" style="display:none"><div id="answerContent"></div></div>
@@ -252,6 +292,17 @@ header h1{font-family:"Noto Serif JP",serif;}
     <button id="btnPrevEnd">前へ</button>
   </div>
 </main>
+
+<div id="cpaMemoModal" style="display:none">
+  <div class="cpa-modal-panel">
+    <div class="cpa-modal-title">メモ（この問題だけに保存されます）</div>
+    <textarea id="cpaMemoText" placeholder="メモを入力"></textarea>
+    <div class="cpa-modal-row">
+      <button type="button" id="cpaMemoSave">保存</button>
+      <button type="button" id="cpaMemoClose">閉じる</button>
+    </div>
+  </div>
+</div>
 
 <div class="panel" id="managementPanel">
   <div class="field-label">学習状況（全<span id="totalLabel">0</span>問）</div>
@@ -1360,6 +1411,245 @@ $("importFile").addEventListener("change", function () {
 $("btnReset").addEventListener("click", uReset);
 uRefresh();
 </script>
+<script>
+// ================= CPA式追加機能（ブックマーク/メモ/出題除外/直近3回/解答後演出） =================
+// 既存の記録キー・保存形式・問題データには一切触らない。追加のみ。
+// 追加で使う保存キーは「kigyoho-cpa-extra-v1」1つだけ（新規追加）。
+// 問題の識別キーは既存の学習ログと同じ形式（本編=モード:問題ID、試験対応=x:問題ID、論点まとめ=r:No.）。
+var CPAKEY = "kigyoho-cpa-extra-v1";
+var cpaStore = (function () {
+  try {
+    var o = JSON.parse(localStorage.getItem(CPAKEY) || "null");
+    if (o && typeof o === "object") return o;
+  } catch (e) {}
+  return {};
+})();
+if (!cpaStore.bookmarks || typeof cpaStore.bookmarks !== "object") cpaStore.bookmarks = {};
+if (!cpaStore.memos || typeof cpaStore.memos !== "object") cpaStore.memos = {};
+if (!cpaStore.excluded || typeof cpaStore.excluded !== "object") cpaStore.excluded = {};
+if (!cpaStore.history || typeof cpaStore.history !== "object") cpaStore.history = {};
+if (!cpaStore.ui || typeof cpaStore.ui !== "object") cpaStore.ui = {};
+if (typeof cpaStore.ui.bookmarkOnly !== "boolean") cpaStore.ui.bookmarkOnly = false;
+if (typeof cpaStore.ui.includeExcluded !== "boolean") cpaStore.ui.includeExcluded = false;
+
+function cpaSave() {
+  try { localStorage.setItem(CPAKEY, JSON.stringify(cpaStore)); } catch (e) {}
+}
+function cpaKeyOf(layer, mode, item) {
+  if (!item) return null;
+  if (layer === "ronten") return "r:" + item.no;
+  if (layer === "exam") return "x:" + item.id;
+  return mode + ":" + item.id;
+}
+function cpaCurrentKey() {
+  var item = currentItem();
+  if (!item) return null;
+  return cpaKeyOf(state.layer, state.mode, item);
+}
+function cpaPasses(key) {
+  if (!key) return true;
+  if (cpaStore.excluded[key] && !cpaStore.ui.includeExcluded) return false;
+  if (cpaStore.ui.bookmarkOnly && !cpaStore.bookmarks[key]) return false;
+  return true;
+}
+function cpaHistoryText(key) {
+  var h = (key && Array.isArray(cpaStore.history[key])) ? cpaStore.history[key].slice(-3) : [];
+  var cells = [];
+  for (var i = 0; i < 3; i++) cells.push(i < h.length ? h[i] : "—");
+  return cells.join(" ");
+}
+function cpaRecord(key, g) {
+  if (!key) return;
+  if (!Array.isArray(cpaStore.history[key])) cpaStore.history[key] = [];
+  cpaStore.history[key].push(g);
+  if (cpaStore.history[key].length > 30) cpaStore.history[key] = cpaStore.history[key].slice(-30);
+  cpaSave();
+}
+
+// ===== 絞り込み（ブックマークのみ／出題除外）: 既存のキュー構築を包んで追加フィルタを掛ける =====
+var cpaBuildQueueOrig = buildQueue;
+buildQueue = function (mode) {
+  cpaBuildQueueOrig(mode);
+  var s = state[mode];
+  s.queue = s.queue.filter(function (it) { return cpaPasses(cpaKeyOf("main", mode, it)); });
+  if (s.idx >= s.queue.length) s.idx = 0;
+};
+var cpaStart10Orig = start10;
+start10 = function (mode) {
+  cpaStart10Orig(mode);
+  var s = state[mode];
+  s.queue = s.queue.filter(function (it) { return cpaPasses(cpaKeyOf("main", mode, it)); });
+  s.idx = 0;
+  render();
+};
+var cpaXBuildQueueOrig = xbuildQueue;
+xbuildQueue = function () {
+  cpaXBuildQueueOrig();
+  xstate.queue = xstate.queue.filter(function (e) { return cpaPasses("x:" + e.item.id); });
+  if (xstate.idx >= xstate.queue.length) xstate.idx = 0;
+};
+var cpaXStart10Orig = xstart10;
+xstart10 = function () {
+  cpaXStart10Orig();
+  xstate.queue = xstate.queue.filter(function (e) { return cpaPasses("x:" + e.item.id); });
+  xstate.idx = 0;
+  render();
+};
+var cpaRBuildQueueOrig = rbuildQueue;
+rbuildQueue = function () {
+  cpaRBuildQueueOrig();
+  rstate.queue = rstate.queue.filter(function (it) { return cpaPasses("r:" + it.no); });
+  if (rstate.idx >= rstate.queue.length) rstate.idx = 0;
+};
+var cpaRStart10Orig = rstart10;
+rstart10 = function () {
+  cpaRStart10Orig();
+  rstate.queue = rstate.queue.filter(function (it) { return cpaPasses("r:" + it.no); });
+  rstate.idx = 0;
+  render();
+};
+function cpaApplyFilters() {
+  if (state.layer === "exam") xbuildQueue();
+  else if (state.layer === "ronten") rbuildQueue();
+  else buildQueue(state.mode);
+  render();
+}
+
+// ===== 解答後の演出（大きな正解/不正解バッジ＋カードの色味変更） =====
+function cpaShowBadge(g) {
+  var badge = $("cpaBadge"), box = $("cardBox");
+  if (!badge || !box) return;
+  box.classList.remove("cpa-correct", "cpa-wrong", "cpa-partial");
+  var cls, txt;
+  if (g === "○") { cls = "cpa-correct"; txt = "正解"; }
+  else if (g === "×") { cls = "cpa-wrong"; txt = "不正解"; }
+  else { cls = "cpa-partial"; txt = "部分正解"; }
+  box.classList.add(cls);
+  badge.textContent = txt;
+  badge.className = "cpa-badge " + cls;
+  badge.style.display = "";
+}
+function cpaClearBadge() {
+  var badge = $("cpaBadge"), box = $("cardBox");
+  if (badge) badge.style.display = "none";
+  if (box) box.classList.remove("cpa-correct", "cpa-wrong", "cpa-partial");
+}
+
+// ===== 自己評価ボタンの押下にフック: 直近履歴を新キーへ記録し、演出の後に従来どおり進む =====
+var cpaGrading = false;
+var cpaGradeOrig = grade;
+grade = function (g) {
+  if (cpaGrading) return;
+  var key = cpaCurrentKey();
+  if (key) cpaRecord(key, g);
+  cpaShowBadge(g);
+  cpaGrading = true;
+  setTimeout(function () { cpaGrading = false; cpaGradeOrig(g); }, 950);
+};
+
+// ===== カード表示にブックマーク/メモ/除外/直近3回を同期する =====
+var cpaRenderOrig = render;
+render = function () { cpaRenderOrig(); cpaSyncCard(); };
+function cpaSyncCard() {
+  var tools = $("cpaCardTools");
+  if (!tools) return;
+  var item = currentItem(), key = cpaCurrentKey();
+  var mv = $("cpaMemoView");
+  if (!item || !key) {
+    tools.style.display = "none";
+    if (mv) mv.style.display = "none";
+    cpaClearBadge();
+    return;
+  }
+  tools.style.display = "";
+  if (!cpaGrading) cpaClearBadge();
+  var bmOn = !!cpaStore.bookmarks[key];
+  var bm = $("cpaBookmarkBtn");
+  bm.textContent = bmOn ? "★ ブックマーク済み" : "☆ ブックマーク";
+  bm.classList.toggle("cpa-on", bmOn);
+  var exOn = !!cpaStore.excluded[key];
+  var ex = $("cpaExcludeBtn");
+  ex.textContent = exOn ? "出題除外中（解除）" : "出題から除外";
+  ex.classList.toggle("cpa-on", exOn);
+  $("cpaHistory").textContent = "直近3回: " + cpaHistoryText(key);
+  var memo = cpaStore.memos[key];
+  $("cpaMemoBtn").textContent = memo ? "メモ（あり）" : "メモ";
+  if (mv) {
+    if (memo) { mv.textContent = "メモ: " + memo; mv.style.display = ""; }
+    else mv.style.display = "none";
+  }
+}
+
+// ===== メモモーダル =====
+var cpaMemoKey = null;
+function cpaOpenMemo() {
+  var k = cpaCurrentKey();
+  if (!k) return;
+  cpaMemoKey = k;
+  $("cpaMemoText").value = cpaStore.memos[k] || "";
+  $("cpaMemoModal").style.display = "";
+}
+function cpaCloseMemo() {
+  $("cpaMemoModal").style.display = "none";
+  cpaMemoKey = null;
+}
+function cpaSaveMemo() {
+  if (!cpaMemoKey) return;
+  var v = $("cpaMemoText").value.replace(/^\s+|\s+$/g, "");
+  if (v) cpaStore.memos[cpaMemoKey] = v;
+  else delete cpaStore.memos[cpaMemoKey];
+  cpaSave();
+  cpaCloseMemo();
+  cpaSyncCard();
+}
+
+function cpaInit() {
+  var bo = $("cpaBookmarkOnly"), ie = $("cpaIncludeExcluded");
+  bo.checked = !!cpaStore.ui.bookmarkOnly;
+  ie.checked = !!cpaStore.ui.includeExcluded;
+  bo.addEventListener("change", function () {
+    cpaStore.ui.bookmarkOnly = bo.checked; cpaSave(); cpaApplyFilters();
+  });
+  ie.addEventListener("change", function () {
+    cpaStore.ui.includeExcluded = ie.checked; cpaSave(); cpaApplyFilters();
+  });
+  $("cpaBookmarkBtn").addEventListener("click", function () {
+    var k = cpaCurrentKey();
+    if (!k) return;
+    if (cpaStore.bookmarks[k]) delete cpaStore.bookmarks[k];
+    else cpaStore.bookmarks[k] = 1;
+    cpaSave();
+    cpaSyncCard();
+  });
+  $("cpaExcludeBtn").addEventListener("click", function () {
+    var k = cpaCurrentKey();
+    if (!k) return;
+    if (cpaStore.excluded[k]) delete cpaStore.excluded[k];
+    else cpaStore.excluded[k] = 1;
+    cpaSave();
+    cpaApplyFilters();
+  });
+  $("cpaMemoBtn").addEventListener("click", cpaOpenMemo);
+  $("cpaMemoSave").addEventListener("click", cpaSaveMemo);
+  $("cpaMemoClose").addEventListener("click", cpaCloseMemo);
+  $("cpaMemoModal").addEventListener("click", function (e) {
+    if (e.target === $("cpaMemoModal")) cpaCloseMemo();
+  });
+  // このスクリプトより前に構築済みのキューへも、保存済みの除外/絞り込みを反映する
+  MODES.forEach(function (m) { buildQueue(m); });
+  xbuildQueue();
+  rbuildQueue();
+  render();
+}
+window.CPA_EXTRA = {
+  KEY: CPAKEY, store: cpaStore, save: cpaSave,
+  keyOf: cpaKeyOf, currentKey: cpaCurrentKey, passes: cpaPasses,
+  record: cpaRecord, historyText: cpaHistoryText,
+  applyFilters: cpaApplyFilters, showBadge: cpaShowBadge, syncCard: cpaSyncCard
+};
+cpaInit();
+</script>
+
 <script>
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', function () {
